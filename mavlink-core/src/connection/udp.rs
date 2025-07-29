@@ -7,6 +7,8 @@ use crate::connection::MavConnection;
 use crate::peek_reader::PeekReader;
 use crate::{MavHeader, MavlinkVersion, Message, ReadVersion};
 use core::ops::DerefMut;
+use socket2::{Domain, SockAddr, Socket, Type};
+use std::io::ErrorKind;
 use std::io::{self, Read};
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::Mutex;
@@ -181,7 +183,14 @@ impl Connectable for UdpConnectable {
             UdpMode::Udpin => (&self.address, true, None),
             _ => ("0.0.0.0:0", false, Some(get_socket_addr(&self.address)?)),
         };
-        let socket = UdpSocket::bind(addr)?;
+        let socket_addr: SocketAddr = addr
+            .parse()
+            .map_err(|e| io::Error::new(ErrorKind::InvalidInput, e))?;
+        let sock_addr: SockAddr = socket_addr.into();
+        let socket2 = Socket::new(Domain::for_address(socket_addr), Type::DGRAM, None)?;
+        socket2.set_reuse_address(true)?;
+        socket2.bind(&sock_addr)?;
+        let socket = UdpSocket::from(socket2);
         if matches!(self.mode, UdpMode::Udpcast) {
             socket.set_broadcast(true)?;
         }
